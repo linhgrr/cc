@@ -3,7 +3,7 @@ import LoginPage from "../pages/login/index";
 import RegisterPage from "../pages/register/index";
 import HomePage from "../pages/home"; 
 import NotFound from "../pages/error/notFound"; 
-import ProtectedRoute from "../services/ProtectedRoute";
+import ProtectedRoute from "../services/protectedRoute";
 import MyProfile from "../pages/profile/index";
 import AccountManagement from "../pages/Admin/AccountManagement"; 
 import EditUserRole from "../components/features/admin/editUserRole"; 
