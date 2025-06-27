@@ -30,6 +30,7 @@ const CommonLibraryManagement = () => {
   const [editingKeyword, setEditingKeyword] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(6);
+  const [role, setRole] = useState(localStorage.getItem("role") || "");
   const [newKeyword, setNewKeyword] = useState({
     japanese: "",
     english: "",
@@ -54,14 +55,17 @@ const CommonLibraryManagement = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [showGcsInfo, setShowGcsInfo] = useState(false);
 
-  // User role state
-  const [userRole, setUserRole] = useState("");
+  // Update role when localStorage changes
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setRole(localStorage.getItem("role") || "");
+    };
 
-  // Check if user has permission to manage keywords
-  const hasPermission = userRole === "Admin" || userRole === "Library Keeper";
-  
-  // Check if user has permission to upload to GCS (Admin only)
-  const hasGCSUploadPermission = userRole === "Admin";
+    window.addEventListener("storage", handleStorageChange);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, []);
 
   // Add a click outside handler to close the dropdown
   useEffect(() => {
@@ -214,50 +218,18 @@ const CommonLibraryManagement = () => {
       }
     };
 
-    // Get user role from localStorage
-    const role = localStorage.getItem("role") || "";
-    setUserRole(role);
-
     fetchKeywords();
     fetchGCSStatus();
   }, []);
 
   const handleDelete = async (id) => {
     try {
-      // Find the keyword being deleted to include in notification
-      const keywordToDelete = keywords.find(k => k.id === id);
-      
       await api.delete(`/api/common-keyword/${id}/delete/`);
       const res = await api.get("/api/common-keyword/suggestions/");
       const approvedKeywords = res.data.filter(
         (keyword) => keyword.status === "approved"
       );
       setKeywords(approvedKeywords);
-
-      // Create notification for all users about the deleted keyword
-      if (keywordToDelete && hasPermission) {
-        try {
-          await api.post("/api/notifications/create-for-all/", {
-            title: "Keyword Deleted",
-            message: `A keyword has been removed from the library by ${localStorage.getItem("fullName") || "an admin"}.`,
-            details: true,
-            keyword_details: [
-              {
-                id: keywordToDelete.id,
-                japanese: keywordToDelete.japanese || "",
-                english: keywordToDelete.english || "",
-                vietnamese: keywordToDelete.vietnamese || "",
-                chinese_traditional: keywordToDelete.chinese_traditional || "",
-                chinese_simplified: keywordToDelete.chinese_simplified || "",
-                action: "deleted",
-                deleted_at: new Date().toISOString(),
-              },
-            ],
-          });
-        } catch (notificationError) {
-          console.error("Failed to create delete notification:", notificationError);
-        }
-      }
 
       toast.success("Common keyword deleted successfully!", {
         style: { backgroundColor: "green", color: "white" },
@@ -290,29 +262,27 @@ const CommonLibraryManagement = () => {
         )
       );
 
-      // Create notification for all users about the updated keyword
-      if (hasPermission) {
-        try {
-          await api.post("/api/notifications/create-for-all/", {
-            title: "Keyword Updated",
-            message: `A keyword has been updated in the library by ${localStorage.getItem("fullName") || "an admin"}.`,
-            details: true,
-            keyword_details: [
-              {
-                id: editingKeyword.id,
-                japanese: editingKeyword.japanese || "",
-                english: editingKeyword.english || "",
-                vietnamese: editingKeyword.vietnamese || "",
-                chinese_traditional: editingKeyword.chinese_traditional || "",
-                chinese_simplified: editingKeyword.chinese_simplified || "",
-                action: "updated",
-                updated_at: new Date().toISOString(),
-              },
-            ],
-          });
-        } catch (notificationError) {
-          console.error("Failed to create update notification:", notificationError);
-        }
+      // Tạo notification cho tất cả users về việc sửa từ khóa
+      try {
+        await api.post("/api/notifications/create-for-all/", {
+          title: "Keyword Updated",
+          message: "A keyword in the library has been updated.",
+          details: true,
+          keyword_details: [
+            {
+              id: editingKeyword.id,
+              japanese: editingKeyword.japanese || "",
+              english: editingKeyword.english || "",
+              vietnamese: editingKeyword.vietnamese || "",
+              chinese_traditional: editingKeyword.chinese_traditional || "",
+              chinese_simplified: editingKeyword.chinese_simplified || "",
+              action: "updated",
+              updated_at: new Date().toISOString(),
+            },
+          ],
+        });
+      } catch (notificationError) {
+        console.error("Failed to create notification:", notificationError);
       }
 
       setEditingKeyword(null);
@@ -530,7 +500,7 @@ const CommonLibraryManagement = () => {
               <FaFileExport className="mr-2" /> Export
             </button>
 
-            {hasGCSUploadPermission && (
+            {(role === "Library Keeper" || role === "Admin") && (
               <button
                 className={`flex items-center justify-center px-4 py-2 text-white rounded-full min-w-[150px] transition-colors ${
                   isUploading
@@ -567,7 +537,7 @@ const CommonLibraryManagement = () => {
               </button>
             )}
 
-            {hasGCSUploadPermission && (
+            {(role === "Library Keeper" || role === "Admin") && (
               <button
                 className="flex items-center justify-center px-3 py-2 bg-gray-500 text-white rounded-full hover:bg-gray-600 transition-colors"
                 onClick={() => setShowGcsInfo(!showGcsInfo)}
@@ -651,28 +621,70 @@ const CommonLibraryManagement = () => {
           <table className="w-full border-collapse bg-white overflow-hidden">
             <thead>
               <tr className="bg-[#004098CC] text-white font-bold">
-                <th className={`p-[0.75rem] border-b border-gray-300 text-center ${hasPermission ? 'w-[5%]' : 'w-[8%]'}`}>
+                <th
+                  className={`p-[0.75rem] border-b border-gray-300 text-center ${
+                    role === "Library Keeper" || role === "Admin"
+                      ? "w-[5%]"
+                      : "w-[8%]"
+                  }`}
+                >
                   No
                 </th>
-                <th className={`p-[0.75rem] border-b border-gray-300 text-center ${hasPermission ? 'w-[15%]' : 'w-[17%]'}`}>
+                <th
+                  className={`p-[0.75rem] border-b border-gray-300 ${
+                    role === "Library Keeper" || role === "Admin"
+                      ? "w-[15%]"
+                      : "w-[18%]"
+                  } text-center`}
+                >
                   Japanese
                 </th>
-                <th className={`p-[0.75rem] border-b border-gray-300 text-center ${hasPermission ? 'w-[15%]' : 'w-[17%]'}`}>
+                <th
+                  className={`p-[0.75rem] border-b border-gray-300 ${
+                    role === "Library Keeper" || role === "Admin"
+                      ? "w-[15%]"
+                      : "w-[18%]"
+                  } text-center`}
+                >
                   English
                 </th>
-                <th className={`p-[0.75rem] border-b border-gray-300 text-center ${hasPermission ? 'w-[15%]' : 'w-[17%]'}`}>
+                <th
+                  className={`p-[0.75rem] border-b border-gray-300 ${
+                    role === "Library Keeper" || role === "Admin"
+                      ? "w-[15%]"
+                      : "w-[18%]"
+                  } text-center`}
+                >
                   Vietnamese
                 </th>
-                <th className={`p-[0.75rem] border-b border-gray-300 text-center ${hasPermission ? 'w-[15%]' : 'w-[17%]'}`}>
+                <th
+                  className={`p-[0.75rem] border-b border-gray-300 ${
+                    role === "Library Keeper" || role === "Admin"
+                      ? "w-[15%]"
+                      : "w-[18%]"
+                  } text-center`}
+                >
                   Chinese (Traditional)
                 </th>
-                <th className={`p-[0.75rem] border-b border-gray-300 text-center ${hasPermission ? 'w-[15%]' : 'w-[17%]'}`}>
+                <th
+                  className={`p-[0.75rem] border-b border-gray-300 ${
+                    role === "Library Keeper" || role === "Admin"
+                      ? "w-[15%]"
+                      : "w-[18%]"
+                  } text-center`}
+                >
                   Chinese (Simplified)
                 </th>
-                <th className={`p-[0.75rem] border-b border-gray-300 text-center ${hasPermission ? 'w-[10%]' : 'w-[17%]'}`}>
+                <th
+                  className={`p-[0.75rem] border-b border-gray-300 ${
+                    role === "Library Keeper" || role === "Admin"
+                      ? "w-[10%]"
+                      : "w-[12%]"
+                  } text-center`}
+                >
                   Date Modified
                 </th>
-                {hasPermission && (
+                {(role === "Library Keeper" || role === "Admin") && (
                   <th className="p-[0.75rem] border-b border-gray-300 w-[10%] text-center">
                     Action
                   </th>
@@ -706,10 +718,10 @@ const CommonLibraryManagement = () => {
                   <td className="p-[0.75rem] border-b border-gray-200 truncate max-w-[200px] text-center">
                     {item.chinese_simplified || ""}
                   </td>
-                                    <td className="p-[0.75rem] border-b border-gray-200 text-center text-sm truncate">
+                  <td className="p-[0.75rem] border-b border-gray-200 text-center text-sm truncate">
                     {formatDate(item.updated_at)}
                   </td>
-                  {hasPermission && (
+                  {(role === "Library Keeper" || role === "Admin") && (
                     <td className="p-[0.75rem] border-b border-gray-200 text-center">
                       <div className="flex justify-center space-x-[1rem]">
                         <button
@@ -844,7 +856,7 @@ const CommonLibraryManagement = () => {
         </div>
       )}
 
-      {editingKeyword && (
+      {editingKeyword && (role === "Library Keeper" || role === "Admin") && (
         <div
           className="fixed inset-0 flex justify-center items-center z-50"
           style={{ backgroundColor: "rgba(255, 255, 255, 0.7)" }}
@@ -1042,41 +1054,42 @@ const CommonLibraryManagement = () => {
       )}
 
       {/* Delete Confirmation Modal */}
-      {deleteConfirmModal.isOpen && (
-        <div
-          className="fixed inset-0 flex justify-center items-center z-50"
-          style={{ backgroundColor: "rgba(255, 255, 255, 0.7)" }}
-        >
+      {deleteConfirmModal.isOpen &&
+        (role === "Library Keeper" || role === "Admin") && (
           <div
-            className="bg-white p-6 rounded-lg shadow-xl max-w-md w-11/12 text-center"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 flex justify-center items-center z-50"
+            style={{ backgroundColor: "rgba(255, 255, 255, 0.7)" }}
           >
-            <h3 className="text-lg text-[#004098CC] font-bold mb-4">
-              Confirm Delete
-            </h3>
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to delete this keyword? This action cannot
-              be undone.
-            </p>
-            <div className="flex justify-center gap-4">
-              <button
-                className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
-                onClick={() =>
-                  setDeleteConfirmModal({ isOpen: false, keywordId: null })
-                }
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-                onClick={() => handleDelete(deleteConfirmModal.keywordId)}
-              >
-                Delete
-              </button>
+            <div
+              className="bg-white p-6 rounded-lg shadow-xl max-w-md w-11/12 text-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg text-[#004098CC] font-bold mb-4">
+                Confirm Delete
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to delete this keyword? This action cannot
+                be undone.
+              </p>
+              <div className="flex justify-center gap-4">
+                <button
+                  className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+                  onClick={() =>
+                    setDeleteConfirmModal({ isOpen: false, keywordId: null })
+                  }
+                >
+                  Cancel
+                </button>
+                <button
+                  className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                  onClick={() => handleDelete(deleteConfirmModal.keywordId)}
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* GCS Status Info Modal */}
       {showGcsInfo && gcsStatus && (
